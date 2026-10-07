@@ -1,18 +1,16 @@
 import axios from "axios"
 
 const TMDB_BASE_URL = "https://api.themoviedb.org/3"
-const TMDB_ACCESS_TOKEN = process.env.API_KEY
-
-if (!TMDB_ACCESS_TOKEN) {
-  console.warn("TMDB API_KEY is not set in environment variables")
-}
 
 export const tmdbClient = axios.create({
   baseURL: TMDB_BASE_URL,
-  headers: {
-    Authorization: `Bearer ${TMDB_ACCESS_TOKEN}`,
-    "Content-Type": "application/json",
-  },
+  headers: { "Content-Type": "application/json" },
+})
+
+tmdbClient.interceptors.request.use((config) => {
+  const token = process.env.NEXT_PUBLIC_API_KEY
+  if (token) config.headers.Authorization = `Bearer ${token}`
+  return config
 })
 
 tmdbClient.interceptors.response.use(

@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { Search, Bookmark, Menu, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { motion, AnimatePresence } from "framer-motion"
@@ -17,29 +17,13 @@ export default function Navbar() {
   const pathname = usePathname()
   const router = useRouter()
   const [scrolled, setScrolled] = useState(false)
-  const [searchOpen, setSearchOpen] = useState(false)
-  const [searchQuery, setSearchQuery] = useState("")
   const [mobileOpen, setMobileOpen] = useState(false)
-  const searchRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20)
     window.addEventListener("scroll", onScroll, { passive: true })
     return () => window.removeEventListener("scroll", onScroll)
   }, [])
-
-  useEffect(() => {
-    if (searchOpen) searchRef.current?.focus()
-  }, [searchOpen])
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (searchQuery.trim()) {
-      router.push(`/search?q=${encodeURIComponent(searchQuery.trim())}`)
-      setSearchOpen(false)
-      setSearchQuery("")
-    }
-  }
 
   return (
     <header
@@ -82,36 +66,12 @@ export default function Navbar() {
 
           {/* Right Actions */}
           <div className="flex items-center gap-2">
-            {/* Search */}
-            <AnimatePresence>
-              {searchOpen ? (
-                <motion.form
-                  initial={{ width: 0, opacity: 0 }}
-                  animate={{ width: 240, opacity: 1 }}
-                  exit={{ width: 0, opacity: 0 }}
-                  transition={{ duration: 0.3, ease: "easeInOut" }}
-                  onSubmit={handleSearch}
-                  className="overflow-hidden"
-                >
-                  <input
-                    ref={searchRef}
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search movies, shows..."
-                    className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-sm text-white placeholder-white/40 outline-none focus:border-amber-400/50 focus:bg-white/15 transition-all"
-                    onBlur={() => { if (!searchQuery) setSearchOpen(false) }}
-                  />
-                </motion.form>
-              ) : null}
-            </AnimatePresence>
-
             <button
-              onClick={() => setSearchOpen((v) => !v)}
+              onClick={() => router.push("/search?q=a")}
               className="p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-all"
               aria-label="Search"
             >
-              {searchOpen ? <X size={20} /> : <Search size={20} />}
+              <Search size={20} />
             </button>
 
             <Link

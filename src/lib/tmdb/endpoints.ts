@@ -10,6 +10,7 @@ import type {
   TMDBPaginatedResponse,
   TMDBDiscoverParams,
   TMDBGenre,
+  TMDBWatchProvider,
 } from "./types"
 
 export async function getTrending(
@@ -158,4 +159,11 @@ export async function getMovieGenres(): Promise<TMDBGenre[]> {
 export async function getTVGenres(): Promise<TMDBGenre[]> {
   const { data } = await tmdbClient.get<{ genres: TMDBGenre[] }>("/genre/tv/list")
   return data.genres
+}
+
+export async function getWatchProviders(region = "US"): Promise<TMDBWatchProvider[]> {
+  const { data } = await tmdbClient.get<{ results: TMDBWatchProvider[] }>("/watch/providers/movie", {
+    params: { language: "en-US", watch_region: region },
+  })
+  return data.results
 }

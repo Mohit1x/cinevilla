@@ -119,4 +119,13 @@ export interface TMDBDiscoverParams {
   "vote_average.gte"?: number
   "vote_average.lte"?: number
   with_original_language?: string
+  with_watch_providers?: string
+  watch_region?: string
+}
+
+export interface TMDBWatchProvider {
+  provider_id: number
+  provider_name: string
+  logo_path: string
+  display_priority: number
 }

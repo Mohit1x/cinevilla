@@ -9,6 +9,7 @@ import {
 import { getMediaTitle, getMediaDate } from "@/lib/utils"
 import HeroCarousel from "@/components/hero/HeroCarousel"
 import SectionCarousel from "@/components/ui/SectionCarousel"
+import StreamingProviders from "@/components/ui/StreamingProviders"
 import type { TMDBMedia } from "@/lib/tmdb/types"
 
 export const revalidate = 3600
@@ -56,6 +57,7 @@ export default async function HomePage() {
 
       {/* Sections */}
       <div className="space-y-14 py-14">
+        <StreamingProviders />
         <SectionCarousel
           title="Popular Movies"
           items={toCardProps(popularMovieItems as TMDBMedia[], "movie")}

@@ -83,14 +83,8 @@ export default function HeroCarousel({ items, loading = false }: HeroCarouselPro
 
         <div className="relative max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-10 pb-7 pt-14">
 
-          {/* label + progress dots */}
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-3">
-              <span className="text-amber-400 text-xs font-bold uppercase tracking-[0.2em]">
-                Trending This Week
-              </span>
-              <span className="w-8 h-px bg-amber-400/30" />
-            </div>
+          {/* progress dots */}
+          <div className="flex items-center justify-end mb-5">
             <div className="flex items-center gap-2">
               {items.map((_, i) => (
                 <button
@@ -139,9 +133,10 @@ export default function HeroCarousel({ items, loading = false }: HeroCarouselPro
                   </span>
 
                   {/* card */}
-                  <button
-                    onClick={() => goTo(i, i > current ? 1 : -1)}
-                    className="relative z-10 w-full text-left group"
+                  <Link
+                    href={href}
+                    onMouseEnter={() => goTo(i, i > current ? 1 : -1)}
+                    className="relative z-10 w-full text-left group block"
                   >
                     <div
                       className={`relative overflow-hidden rounded-2xl transition-all duration-300 ${
@@ -156,9 +151,9 @@ export default function HeroCarousel({ items, loading = false }: HeroCarouselPro
                         <div className="absolute inset-0 rounded-2xl ring-1 ring-inset ring-amber-400/20 pointer-events-none" />
                       )}
 
-                      <div className="flex gap-3 p-3">
+                      <div className="flex gap-3 p-4">
                         {/* Poster */}
-                        <div className="relative shrink-0 w-14 h-20 rounded-xl overflow-hidden bg-white/5 shadow-md">
+                        <div className="relative shrink-0 w-16 h-24 rounded-xl overflow-hidden bg-white/5 shadow-md">
                           {item.poster_path ? (
                             <Image
                               src={getTmdbImage(item.poster_path, "w185")}
@@ -225,17 +220,9 @@ export default function HeroCarousel({ items, loading = false }: HeroCarouselPro
                         </div>
                       </div>
                     </div>
-                  </button>
-
-                  {/* details link below card */}
-                  <Link
-                    href={href}
-                    className={`block mt-1.5 text-center text-[10px] font-medium transition-colors duration-200 ${
-                      isActive ? "text-amber-400/50 hover:text-amber-400" : "text-white/20 hover:text-white/50"
-                    }`}
-                  >
-                    View details →
                   </Link>
+
+
                 </motion.div>
               )
             })}

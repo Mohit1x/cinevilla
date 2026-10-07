@@ -2,7 +2,7 @@
 
 import { useSearchParams, useRouter } from "next/navigation"
 import { useState, useEffect, useCallback } from "react"
-import { Search, Film, Tv, X } from "lucide-react"
+import { Search, Film, Tv, X, Star, Play } from "lucide-react"
 import { searchMulti } from "@/lib/tmdb/endpoints"
 import { getTmdbImage } from "@/lib/tmdb/image"
 import { formatDate, formatRating, getMediaTitle, getMediaDate } from "@/lib/utils"
@@ -35,7 +35,6 @@ export default function SearchClient() {
     }
   }, [])
 
-  // Debounce
   useEffect(() => {
     const timer = setTimeout(() => {
       doSearch(query)
@@ -51,9 +50,18 @@ export default function SearchClient() {
   }, []) // eslint-disable-line
 
   return (
-    <div>
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: "easeOut" }}
+    >
       {/* Search input */}
-      <div className="relative max-w-2xl mb-10">
+      <motion.div
+        className="relative max-w-2xl mb-10"
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.1 }}
+      >
         <Search size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30" />
         <input
           type="text"
@@ -61,59 +69,115 @@ export default function SearchClient() {
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search movies, TV shows..."
           autoFocus
-          className="w-full bg-white/6 border border-white/10 rounded-2xl pl-12 pr-12 py-4 text-white placeholder-white/30 text-base outline-none focus:border-amber-400/40 focus:bg-white/8 transition-all"
+          className="w-full bg-white/6 border border-white/10 rounded-2xl pl-12 pr-12 py-4 text-white placeholder-white/30 text-base outline-none focus:border-amber-400/40 focus:bg-white/8 transition-all duration-300"
         />
-        {query && (
-          <button
-            onClick={() => { setQuery(""); setResults([]); setSearched(false) }}
-            className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-white transition-colors"
-          >
-            <X size={18} />
-          </button>
-        )}
-      </div>
+        <AnimatePresence>
+          {query && (
+            <motion.button
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              transition={{ duration: 0.15 }}
+              onClick={() => { setQuery(""); setResults([]); setSearched(false) }}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-white transition-colors"
+            >
+              <X size={18} />
+            </motion.button>
+          )}
+        </AnimatePresence>
+      </motion.div>
 
-      {/* Loading */}
-      {loading && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-          {Array.from({ length: 12 }).map((_, i) => (
-            <div key={i} className="animate-pulse">
-              <div className="aspect-[2/3] rounded-xl bg-white/5" />
-              <div className="mt-2 h-3 bg-white/5 rounded w-3/4" />
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Loading skeletons */}
+      <AnimatePresence>
+        {loading && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4"
+          >
+            {Array.from({ length: 12 }).map((_, i) => (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.03 }}
+                className="animate-pulse"
+              >
+                <div className="aspect-[2/3] rounded-xl bg-white/5" />
+                <div className="mt-2 h-3 bg-white/5 rounded w-3/4" />
+                <div className="mt-1.5 h-3 bg-white/5 rounded w-1/2" />
+              </motion.div>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Empty state */}
-      {!loading && searched && results.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-24 text-center">
-          <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mb-4">
-            <Search size={24} className="text-white/20" />
-          </div>
-          <p className="text-white/50 text-lg font-medium mb-2">No results found</p>
-          <p className="text-white/30 text-sm">Try a different title or keyword</p>
-        </div>
-      )}
+      <AnimatePresence>
+        {!loading && searched && results.length === 0 && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="flex flex-col items-center justify-center py-24 text-center"
+          >
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ type: "spring", stiffness: 200, damping: 15, delay: 0.1 }}
+              className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mb-5"
+            >
+              <Search size={28} className="text-white/20" />
+            </motion.div>
+            <p className="text-white/50 text-lg font-medium mb-2">No results found</p>
+            <p className="text-white/30 text-sm">Try a different title or keyword</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Initial state */}
-      {!loading && !searched && (
-        <div className="flex flex-col items-center justify-center py-24 text-center">
-          <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mb-4">
-            <Search size={24} className="text-white/20" />
-          </div>
-          <p className="text-white/50 text-lg font-medium mb-2">Search CineVilla</p>
-          <p className="text-white/30 text-sm">Find movies and TV shows from around the world</p>
-        </div>
-      )}
+      <AnimatePresence>
+        {!loading && !searched && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.3 }}
+            className="flex flex-col items-center justify-center py-24 text-center"
+          >
+            <motion.div
+              animate={{ scale: [1, 1.08, 1] }}
+              transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+              className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mb-5"
+            >
+              <Search size={28} className="text-white/20" />
+            </motion.div>
+            <p className="text-white/50 text-lg font-medium mb-2">Search CineVilla</p>
+            <p className="text-white/30 text-sm">Find movies and TV shows from around the world</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Results */}
-      {!loading && results.length > 0 && (
-        <>
-          <p className="text-white/40 text-sm mb-6">
-            {results.length} result{results.length !== 1 ? "s" : ""} for &ldquo;{query}&rdquo;
-          </p>
-          <AnimatePresence>
+      <AnimatePresence>
+        {!loading && results.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <motion.p
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.3 }}
+              className="text-white/40 text-sm mb-6"
+            >
+              {results.length} result{results.length !== 1 ? "s" : ""} for &ldquo;{query}&rdquo;
+            </motion.p>
+
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 lg:gap-5">
               {results.map((item, i) => {
                 const title = getMediaTitle(item)
@@ -124,19 +188,20 @@ export default function SearchClient() {
                 return (
                   <motion.div
                     key={item.id}
-                    initial={{ opacity: 0, y: 16 }}
+                    initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3, delay: i * 0.03 }}
+                    transition={{ duration: 0.35, delay: i * 0.04, ease: "easeOut" }}
+                    whileHover={{ y: -6, scale: 1.03 }}
                   >
                     <Link href={href} className="group block">
-                      <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-white/5 mb-2">
+                      <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-white/5 shadow-lg">
                         {item.poster_path ? (
                           <Image
                             src={getTmdbImage(item.poster_path, "w342")}
                             alt={title}
                             fill
                             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 200px"
-                            className="object-cover transition-transform duration-500 group-hover:scale-105"
+                            className="object-cover transition-transform duration-500 group-hover:scale-110"
                           />
                         ) : (
                           <div className="absolute inset-0 flex items-center justify-center">
@@ -147,29 +212,47 @@ export default function SearchClient() {
                             )}
                           </div>
                         )}
+
+                        {/* Hover overlay */}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
+                        {/* Play button */}
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300">
+                          <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-sm border border-white/30 flex items-center justify-center">
+                            <Play size={18} className="text-white fill-white ml-0.5" />
+                          </div>
+                        </div>
+
+                        {/* Badge */}
                         <div className="absolute top-2 left-2">
                           <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-sm text-white/70">
                             {item.media_type === "tv" ? "TV" : "Film"}
                           </span>
                         </div>
-                      </div>
-                      <p className="text-white/90 text-sm font-medium line-clamp-2 leading-tight group-hover:text-white transition-colors">
-                        {title}
-                      </p>
-                      <div className="flex items-center gap-2 mt-1">
-                        {year !== "N/A" && <span className="text-white/40 text-xs">{year}</span>}
+
+                        {/* Rating badge */}
                         {rating !== "N/A" && (
-                          <span className="text-amber-400/70 text-xs">★ {rating}</span>
+                          <div className="absolute top-2 right-2 flex items-center gap-1 bg-black/60 backdrop-blur-sm rounded-md px-1.5 py-0.5">
+                            <Star size={10} className="text-amber-400 fill-amber-400" />
+                            <span className="text-[10px] font-semibold text-white">{rating}</span>
+                          </div>
                         )}
                       </div>
+
+                      <p className="mt-2.5 text-white/90 text-sm font-medium line-clamp-2 leading-tight group-hover:text-white transition-colors">
+                        {title}
+                      </p>
+                      {year !== "N/A" && (
+                        <p className="text-white/40 text-xs mt-1">{year}</p>
+                      )}
                     </Link>
                   </motion.div>
                 )
               })}
             </div>
-          </AnimatePresence>
-        </>
-      )}
-    </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
   )
 }
