@@ -1,7 +1,7 @@
 import Image from "next/image"
 import Link from "next/link"
 import { notFound } from "next/navigation"
-import { Star, Clock, Calendar, Globe, Play, Bookmark, ChevronLeft } from "lucide-react"
+import { Star, Clock, Calendar, Globe, ChevronLeft, Play } from "lucide-react"
 import {
   getMovieDetails,
   getMovieCredits,
@@ -13,6 +13,7 @@ import { formatDate, formatRating, formatRuntime } from "@/lib/utils"
 import SectionCarousel from "@/components/ui/SectionCarousel"
 import CastCarousel from "@/components/ui/CastCarousel"
 import WatchlistButton from "@/components/ui/WatchlistButton"
+import WatchButton from "@/components/player/WatchButton"
 
 export const revalidate = 3600
 
@@ -152,14 +153,12 @@ export default async function MoviePage({ params }: Props) {
 
             {/* Actions */}
             <div className="flex flex-wrap items-center gap-3">
-              <button
-                disabled
-                className="flex items-center gap-2.5 px-6 py-3 bg-amber-400/20 border border-amber-400/30 text-amber-400/60 font-bold text-sm rounded-xl cursor-not-allowed"
-                title="Streaming coming soon"
-              >
-                <Play size={16} />
-                Watch Now — Coming Soon
-              </button>
+              <WatchButton
+                tmdbId={data.id}
+                title={data.title}
+                year={data.release_date?.slice(0, 4) ?? ""}
+                runtime={data.runtime ?? 0}
+              />
 
               <WatchlistButton
                 item={{
