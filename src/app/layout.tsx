@@ -15,6 +15,7 @@ export const metadata: Metadata = {
   description:
     "CineVilla is your premium destination for discovering the world's finest films and television series.",
   keywords: ["movies", "tv shows", "streaming", "cinema", "discover"],
+  icons: { icon: "/icon.png", apple: "/icon.png" },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -22,9 +22,9 @@ interface Source {
 export default function WatchModal({ tmdbId, title, year, runtime, onClose }: WatchModalProps) {
   const [sources, setSources] = useState<Source[]>([])
   const [loading, setLoading] = useState(true)
+  const fetchedUrls = useState(() => new Set<string>())[0]
 
-  useEffect(() => {
-    let cancelled = false
+  const fetchSources = async (cancelled: () => boolean) => {
     const params = new URLSearchParams({
       tmdbId: String(tmdbId),
       type: "movie",
@@ -34,25 +34,34 @@ export default function WatchModal({ tmdbId, title, year, runtime, onClose }: Wa
       runtime: String(runtime),
     })
 
-    const poll = async () => {
-      while (!cancelled) {
-        try {
-          const res = await fetch(`/api/sources?${params}`)
-          const data = await res.json()
-          if (cancelled) return
-          if (data.found && data.sources?.length && !data.pending) {
-            setSources(data.sources)
-            setLoading(false)
-            return
-          }
-        } catch { /* network error, retry */ }
-        if (!cancelled) await new Promise(r => setTimeout(r, 2000))
-      }
+    while (!cancelled()) {
+      try {
+        const res = await fetch(`/api/sources?${params}`)
+        const data = await res.json()
+        if (cancelled()) return
+        if (data.found && data.sources?.length && !data.pending) {
+          const newSources: Source[] = data.sources.filter((s: Source) => !fetchedUrls.has(s.url))
+          newSources.forEach((s: Source) => fetchedUrls.add(s.url))
+          if (newSources.length) setSources(prev => [...prev, ...newSources])
+          setLoading(false)
+          return
+        }
+      } catch { /* retry */ }
+      if (!cancelled()) await new Promise(r => setTimeout(r, 2000))
     }
+  }
 
-    poll()
+  useEffect(() => {
+    let cancelled = false
+    fetchSources(() => cancelled)
     return () => { cancelled = true }
-  }, [tmdbId, title, year, runtime])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tmdbId])
+
+  const handleSourcesExhausted = () => {
+    let cancelled = false
+    fetchSources(() => cancelled)
+  }
 
   // Lock body scroll
   useEffect(() => {
@@ -69,7 +78,7 @@ export default function WatchModal({ tmdbId, title, year, runtime, onClose }: Wa
         </div>
       )}
       {!loading && sources.length > 0 && (
-        <VideoPlayer sources={sources} title={title} onClose={onClose} />
+        <VideoPlayer sources={sources} title={title} onClose={onClose} onSourcesExhausted={handleSourcesExhausted} />
       )}
     </div>
   )

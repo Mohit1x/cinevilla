@@ -1,4 +1,5 @@
 import Link from "next/link"
+import Image from "next/image"
 
 export default function Footer() {
   return (
@@ -7,9 +8,8 @@ export default function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-10">
           {/* Brand */}
           <div className="md:col-span-2">
-            <div className="flex items-center gap-1 mb-4">
-              <span className="text-2xl font-black tracking-tight text-white">CINE</span>
-              <span className="text-2xl font-black tracking-tight text-amber-400">VILLA</span>
+            <div className="mb-4">
+              <Image src="/assets/logo.png" alt="CineVilla" width={180} height={60} className="h-14 w-auto" />
             </div>
             <p className="text-white/40 text-sm leading-relaxed max-w-xs">
               Discover the world&apos;s finest films and television. Your premium destination for cinematic exploration.

@@ -24,6 +24,7 @@ interface VideoPlayerProps {
   sources: Source[]
   title: string
   onClose: () => void
+  onSourcesExhausted?: () => void
 }
 
 function formatTime(s: number) {
@@ -34,7 +35,7 @@ function formatTime(s: number) {
   return `${m}:${String(sec).padStart(2, "0")}`
 }
 
-export default function VideoPlayer({ sources, title, onClose }: VideoPlayerProps) {
+export default function VideoPlayer({ sources, title, onClose, onSourcesExhausted }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -139,12 +140,14 @@ export default function VideoPlayer({ sources, title, onClose }: VideoPlayerProp
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (data.fatal) {
           console.error("[hls] fatal error:", data.type, data.details)
-          if (data.details === "manifestIncompatibleCodecsError") {
-            setSourceIdx(i => i + 1 < sources.length ? i + 1 : i)
-          } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+          if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
             hls.recoverMediaError()
           } else {
-            setSourceIdx(i => i + 1 < sources.length ? i + 1 : i)
+            setSourceIdx(i => {
+              if (i + 1 < sources.length) return i + 1
+              onSourcesExhausted?.()
+              return i
+            })
           }
         }
       })
@@ -245,7 +248,11 @@ export default function VideoPlayer({ sources, title, onClose }: VideoPlayerProp
           if (!v) return
           const err = v.error
           console.error("[video] error code:", err?.code, "message:", err?.message)
-          setSourceIdx(i => i + 1 < sources.length ? i + 1 : i)
+          setSourceIdx(i => {
+            if (i + 1 < sources.length) return i + 1
+            onSourcesExhausted?.()
+            return i
+          })
         }}
         playsInline
       >

@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import Image from "next/image"
 import { usePathname, useRouter } from "next/navigation"
 import { useState, useEffect } from "react"
 import { Search, Bookmark, Menu, X } from "lucide-react"
@@ -37,13 +38,8 @@ export default function Navbar() {
       <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-10">
         <div className="flex items-center justify-between h-16 lg:h-20">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-1 shrink-0">
-            <span className="text-xl lg:text-2xl font-black tracking-tight text-white">
-              CINE
-            </span>
-            <span className="text-xl lg:text-2xl font-black tracking-tight text-amber-400">
-              VILLA
-            </span>
+          <Link href="/" className="shrink-0">
+            <Image src="/assets/logo.png" alt="CineVilla" width={180} height={60} className="h-10 lg:h-14 w-auto" priority />
           </Link>
 
           {/* Desktop Nav */}
