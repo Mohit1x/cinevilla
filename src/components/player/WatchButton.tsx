@@ -11,9 +11,10 @@ interface Props {
   title: string
   year: string
   runtime: number
+  posterUrl?: string
 }
 
-export default function WatchButton({ tmdbId, title, year, runtime }: Props) {
+export default function WatchButton({ tmdbId, title, year, runtime, posterUrl }: Props) {
   const [open, setOpen] = useState(false)
 
   return (
@@ -31,6 +32,7 @@ export default function WatchButton({ tmdbId, title, year, runtime }: Props) {
           title={title}
           year={year}
           runtime={runtime}
+          posterUrl={posterUrl}
           onClose={() => setOpen(false)}
         />
       )}

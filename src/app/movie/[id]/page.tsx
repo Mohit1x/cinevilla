@@ -158,6 +158,7 @@ export default async function MoviePage({ params }: Props) {
                 title={data.title}
                 year={data.release_date?.slice(0, 4) ?? ""}
                 runtime={data.runtime ?? 0}
+                posterUrl={poster}
               />
 
               <WatchlistButton

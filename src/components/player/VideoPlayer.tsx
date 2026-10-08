@@ -23,6 +23,7 @@ interface Source {
 interface VideoPlayerProps {
   sources: Source[]
   title: string
+  posterUrl?: string
   onClose: () => void
   onSourcesExhausted?: () => void
 }
@@ -35,7 +36,7 @@ function formatTime(s: number) {
   return `${m}:${String(sec).padStart(2, "0")}`
 }
 
-export default function VideoPlayer({ sources, title, onClose, onSourcesExhausted }: VideoPlayerProps) {
+export default function VideoPlayer({ sources, title, posterUrl, onClose, onSourcesExhausted }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -124,12 +125,12 @@ export default function VideoPlayer({ sources, title, onClose, onSourcesExhauste
     setPlaying(false)
 
     const url = currentSource.url
-    console.log("[video] loading url:", url)
-
     if (Hls.isSupported()) {
       const hls = new Hls({
-        manifestLoadingTimeOut: 30000,
+        manifestLoadingTimeOut: 10000,
         manifestLoadingMaxRetry: 0,
+        levelLoadingTimeOut: 10000,
+        levelLoadingMaxRetry: 0,
       })
       hlsRef.current = hls
       hls.loadSource(url)
@@ -139,7 +140,6 @@ export default function VideoPlayer({ sources, title, onClose, onSourcesExhauste
       })
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (data.fatal) {
-          console.error("[hls] fatal error:", data.type, data.details)
           if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
             hls.recoverMediaError()
           } else {
@@ -246,8 +246,6 @@ export default function VideoPlayer({ sources, title, onClose, onSourcesExhauste
         onError={() => {
           const v = videoRef.current
           if (!v) return
-          const err = v.error
-          console.error("[video] error code:", err?.code, "message:", err?.message)
           setSourceIdx(i => {
             if (i + 1 < sources.length) return i + 1
             onSourcesExhausted?.()
@@ -283,6 +281,14 @@ export default function VideoPlayer({ sources, title, onClose, onSourcesExhauste
           <X size={22} />
         </button>
       </div>
+
+      {/* Poster backdrop shown while buffering between sources */}
+      {buffering && posterUrl && (
+        <div className="absolute inset-0 pointer-events-none">
+          <img src={posterUrl} alt={title} className="w-full h-full object-cover opacity-20 blur-sm scale-105" />
+          <div className="absolute inset-0 bg-black/60" />
+        </div>
+      )}
 
       {/* Center buffering spinner / play indicator */}
       {buffering ? (

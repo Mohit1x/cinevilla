@@ -16,7 +16,6 @@ tmdbClient.interceptors.request.use((config) => {
 tmdbClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    console.error("TMDB API Error:", error?.response?.status, error?.response?.data)
     return Promise.reject(error)
   }
 )

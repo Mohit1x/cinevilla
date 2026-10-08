@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { encrypt, decrypt } from "@/lib/crypto"
 
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl
@@ -14,7 +15,10 @@ export async function GET(req: NextRequest) {
         url: `/api/stream?url=${encodeURIComponent(s.url)}`,
       }))
     }
-    return NextResponse.json(data)
+    // Encrypt → immediately decrypt server-side to verify integrity, then return plain
+    const token = await encrypt(data)
+    const verified = await decrypt<typeof data>(token)
+    return NextResponse.json(verified)
   } catch {
     return NextResponse.json({ found: false }, { status: 502 })
   }
