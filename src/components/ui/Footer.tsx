@@ -1,9 +1,11 @@
 import Link from "next/link"
 import Image from "next/image"
+import AdsterraBanner from "@/components/ui/AdsterraBanner"
 
 export default function Footer() {
   return (
     <footer className="bg-[#080810] border-t border-white/5 mt-20">
+      <AdsterraBanner />
       <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-10 py-12">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-10">
           {/* Brand */}

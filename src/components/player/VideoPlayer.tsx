@@ -1,10 +1,10 @@
 "use client"
 
-import { useRef, useState, useEffect, useCallback } from "react"
+import { useRef, useState, useEffect, useCallback, useMemo } from "react"
 import Hls from "hls.js"
 import {
   Play, Pause, Volume2, VolumeX, Maximize, Minimize,
-  SkipBack, SkipForward, Settings, Subtitles, X, ChevronRight,
+  SkipBack, SkipForward, Settings, Subtitles, X, ChevronRight, RotateCcw,
 } from "lucide-react"
 
 interface Caption {
@@ -12,6 +12,7 @@ interface Caption {
   language: string
   url: string
   format: string
+  display?: string
 }
 
 interface Source {
@@ -21,7 +22,10 @@ interface Source {
 }
 
 interface VideoPlayerProps {
+  tmdbId?: number
   sources: Source[]
+  subtitles?: Caption[]
+  subtitlesLoading?: boolean
   title: string
   posterUrl?: string
   onClose: () => void
@@ -36,7 +40,11 @@ function formatTime(s: number) {
   return `${m}:${String(sec).padStart(2, "0")}`
 }
 
-export default function VideoPlayer({ sources, title, posterUrl, onClose, onSourcesExhausted }: VideoPlayerProps) {
+function storageKey(tmdbId?: number) {
+  return tmdbId ? `cv_progress_${tmdbId}` : null
+}
+
+export default function VideoPlayer({ tmdbId, sources, subtitles = [], subtitlesLoading = false, title, posterUrl, onClose, onSourcesExhausted }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -56,12 +64,51 @@ export default function VideoPlayer({ sources, title, posterUrl, onClose, onSour
   const [playbackRate, setPlaybackRate] = useState(1)
   const [seeking, setSeeking] = useState(false)
   const [buffering, setBuffering] = useState(true)
+  const [activeCue, setActiveCue] = useState<string>("")
+  const [resumeFrom, setResumeFrom] = useState<number | null>(null)
 
   const hlsRef = useRef<Hls | null>(null)
   const currentSource = sources[sourceIdx]
-  const captions = currentSource?.captions ?? []
 
-  // Auto-hide controls
+  const captions = useMemo(() => {
+    const seen = new Set<string>()
+    return [...(currentSource?.captions ?? []), ...subtitles].filter(c => {
+      if (seen.has(c.language)) return false
+      seen.add(c.language)
+      return true
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceIdx, subtitles])
+
+  // --- Resume position ---
+  // On first load, check localStorage for saved position
+  useEffect(() => {
+    const key = storageKey(tmdbId)
+    if (!key) return
+    const saved = parseFloat(localStorage.getItem(key) ?? "0")
+    if (saved > 10) setResumeFrom(saved)
+  }, [tmdbId])
+
+  // Save position every 5s while playing
+  useEffect(() => {
+    if (!tmdbId) return
+    const key = storageKey(tmdbId)!
+    const interval = setInterval(() => {
+      const v = videoRef.current
+      if (v && !v.paused && v.currentTime > 10) {
+        localStorage.setItem(key, String(Math.floor(v.currentTime)))
+      }
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [tmdbId])
+
+  // Clear saved position when video ends
+  const clearProgress = useCallback(() => {
+    const key = storageKey(tmdbId)
+    if (key) localStorage.removeItem(key)
+  }, [tmdbId])
+
+  // --- Auto-hide controls ---
   const resetHideTimer = useCallback(() => {
     setShowControls(true)
     if (hideTimer.current) clearTimeout(hideTimer.current)
@@ -75,7 +122,7 @@ export default function VideoPlayer({ sources, title, posterUrl, onClose, onSour
     return () => { if (hideTimer.current) clearTimeout(hideTimer.current) }
   }, [playing, resetHideTimer])
 
-  // Keyboard shortcuts
+  // --- Keyboard shortcuts ---
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const v = videoRef.current
@@ -96,23 +143,113 @@ export default function VideoPlayer({ sources, title, posterUrl, onClose, onSour
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fullscreen])
 
-  // Fullscreen change sync
+  // --- Fullscreen sync ---
   useEffect(() => {
     const onChange = () => setFullscreen(!!document.fullscreenElement)
     document.addEventListener("fullscreenchange", onChange)
     return () => document.removeEventListener("fullscreenchange", onChange)
   }, [])
 
-  // Caption track
+  // --- Track management: append once, never remove/re-add ---
+  useEffect(() => {
+    const v = videoRef.current
+    if (!v || captions.length === 0) return
+
+    captions.forEach(c => {
+      const label = c.display ?? c.language
+      if (Array.from(v.querySelectorAll("track")).find(el => el.label === label)) return
+      const el = document.createElement("track")
+      el.kind = "subtitles"
+      el.src = c.url
+      el.srclang = c.language
+      el.label = label
+      el.default = false
+      v.appendChild(el)
+      console.log("[tracks] appended:", label, c.url)
+    })
+
+    setTimeout(() => {
+      Array.from(v.textTracks).forEach(t => { t.mode = "disabled" })
+    }, 0)
+  }, [captions])
+
+  // --- Cue renderer ---
   useEffect(() => {
     const v = videoRef.current
     if (!v) return
-    Array.from(v.textTracks).forEach((t, i) => {
-      t.mode = i === captionIdx ? "showing" : "hidden"
-    })
-  }, [captionIdx])
 
-  // Source loader
+    if (captionIdx === -1) {
+      console.log("[caption] OFF")
+      setActiveCue("")
+      Array.from(v.textTracks).forEach(t => { t.mode = "disabled" })
+      return
+    }
+
+    const caption = captions[captionIdx]
+    const label = caption?.display ?? caption?.language ?? ""
+    console.log(`[caption] selected: "${label}" idx=${captionIdx} videoTime=${v.currentTime.toFixed(1)}s`)
+
+    // Find the HTMLTrackElement by label
+    const trackEl = Array.from(v.querySelectorAll("track") as NodeListOf<HTMLTrackElement>)
+      .find(el => el.label === label)
+
+    if (!trackEl) {
+      console.warn("[caption] no <track> element found for label:", label)
+      return
+    }
+
+    // The TextTrack is on trackEl.track, readyState is on the HTMLTrackElement itself
+    const textTrack = trackEl.track
+    console.log(`[caption] trackEl.readyState=${trackEl.readyState} textTrack.mode=${textTrack?.mode} cues=${textTrack?.cues?.length ?? "null"}`)
+
+    // Disable all others
+    Array.from(v.querySelectorAll("track") as NodeListOf<HTMLTrackElement>).forEach(el => {
+      if (el.label !== label) el.track.mode = "disabled"
+    })
+
+    // Set to hidden so browser loads cues but doesn't render natively
+    textTrack.mode = "hidden"
+
+    let interval: ReturnType<typeof setInterval>
+
+    const startPolling = () => {
+      console.log(`[caption] polling — cues=${textTrack.cues?.length ?? 0} videoTime=${v.currentTime.toFixed(1)}s`)
+      interval = setInterval(() => {
+        if (textTrack.mode !== "hidden") textTrack.mode = "hidden"
+        const active = textTrack.activeCues
+        if (active && active.length > 0) {
+          const text = Array.from(active)
+            .map(c => (c as VTTCue).text.replace(/<[^>]+>/g, ""))
+            .join("\n")
+          setActiveCue(text)
+        } else {
+          setActiveCue("")
+        }
+      }, 100)
+    }
+
+    // HTMLTrackElement.readyState: 0=NONE, 1=LOADING, 2=LOADED, 3=ERROR
+    if (trackEl.readyState === 2) {
+      console.log("[caption] already loaded")
+      startPolling()
+    } else {
+      console.log(`[caption] waiting for load (trackEl.readyState=${trackEl.readyState})`)
+      trackEl.addEventListener("load", () => {
+        console.log(`[caption] loaded — cues=${textTrack.cues?.length ?? 0}`)
+        startPolling()
+      }, { once: true })
+      trackEl.addEventListener("error", () => {
+        console.error("[caption] failed to load:", trackEl.src)
+      }, { once: true })
+    }
+
+    return () => {
+      clearInterval(interval)
+      setActiveCue("")
+    }
+  }, [captionIdx, captions])
+
+  // --- Source loader ---
   useEffect(() => {
     const v = videoRef.current
     if (!v || !currentSource?.url) return
@@ -152,7 +289,6 @@ export default function VideoPlayer({ sources, title, posterUrl, onClose, onSour
         }
       })
     } else if (v.canPlayType("application/vnd.apple.mpegurl")) {
-      // Safari native HLS
       v.src = url
       v.play().then(() => setPlaying(true)).catch(() => {})
     }
@@ -161,7 +297,7 @@ export default function VideoPlayer({ sources, title, posterUrl, onClose, onSour
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceIdx])
 
-  // Playback rate sync
+  // --- Playback rate sync ---
   useEffect(() => {
     if (videoRef.current) videoRef.current.playbackRate = playbackRate
   }, [playbackRate])
@@ -224,6 +360,13 @@ export default function VideoPlayer({ sources, title, posterUrl, onClose, onSour
     setShowSettings(false)
   }
 
+  function applyResume() {
+    const v = videoRef.current
+    if (!v || resumeFrom === null) return
+    v.currentTime = resumeFrom
+    setResumeFrom(null)
+  }
+
   const progress = duration ? (currentTime / duration) * 100 : 0
   const bufferedPct = duration ? (buffered / duration) * 100 : 0
 
@@ -240,7 +383,7 @@ export default function VideoPlayer({ sources, title, posterUrl, onClose, onSour
         className="w-full h-full"
         onTimeUpdate={onTimeUpdate}
         onLoadedMetadata={onLoadedMetadata}
-        onEnded={() => setPlaying(false)}
+        onEnded={() => { setPlaying(false); clearProgress() }}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onError={() => {
@@ -253,21 +396,42 @@ export default function VideoPlayer({ sources, title, posterUrl, onClose, onSour
           })
         }}
         playsInline
-      >
-        {captions.map((c, i) => (
-          <track
-            key={c.id}
-            kind="subtitles"
-            src={c.url}
-            srcLang={c.language}
-            label={c.language.toUpperCase()}
-            default={i === captionIdx}
-          />
-        ))}
-      </video>
+      />
+
+      {/* Subtitle cue overlay */}
+      {activeCue && (
+        <div className="absolute bottom-20 left-0 right-0 flex justify-center pointer-events-none px-8">
+          <span className="bg-black/70 text-white text-base px-3 py-1 rounded text-center whitespace-pre-line leading-relaxed">
+            {activeCue}
+          </span>
+        </div>
+      )}
+
+      {/* Resume toast */}
+      {resumeFrom !== null && !buffering && (
+        <div
+          className="absolute top-16 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-black/80 border border-white/10 rounded-xl px-4 py-3 z-10"
+          onClick={e => e.stopPropagation()}
+        >
+          <RotateCcw size={16} className="text-amber-400 shrink-0" />
+          <span className="text-white/80 text-sm">Resume from {formatTime(resumeFrom)}?</span>
+          <button
+            onClick={applyResume}
+            className="text-xs font-semibold bg-amber-400 text-black px-3 py-1 rounded-lg hover:bg-amber-300 transition-colors"
+          >
+            Resume
+          </button>
+          <button
+            onClick={() => setResumeFrom(null)}
+            className="text-white/40 hover:text-white transition-colors"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       {/* Gradient overlays */}
-      <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/80 via-transparent to-black/40 opacity-0 transition-opacity duration-300"
+      <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/80 via-transparent to-black/40 transition-opacity duration-300"
         style={{ opacity: showControls ? 1 : 0 }} />
 
       {/* Top bar */}
@@ -282,7 +446,7 @@ export default function VideoPlayer({ sources, title, posterUrl, onClose, onSour
         </button>
       </div>
 
-      {/* Poster backdrop shown while buffering between sources */}
+      {/* Poster backdrop while buffering */}
       {buffering && posterUrl && (
         <div className="absolute inset-0 pointer-events-none">
           <img src={posterUrl} alt={title} className="w-full h-full object-cover opacity-20 blur-sm scale-105" />
@@ -290,7 +454,7 @@ export default function VideoPlayer({ sources, title, posterUrl, onClose, onSour
         </div>
       )}
 
-      {/* Center buffering spinner / play indicator */}
+      {/* Center spinner / play indicator */}
       {buffering ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none gap-3">
           <div className="w-12 h-12 rounded-full border-2 border-white/20 border-t-amber-400 animate-spin" />
@@ -314,22 +478,15 @@ export default function VideoPlayer({ sources, title, posterUrl, onClose, onSour
       >
         {/* Progress bar */}
         <div className="relative h-1 mb-4 group cursor-pointer">
-          {/* Buffered */}
           <div className="absolute inset-y-0 left-0 bg-white/20 rounded-full" style={{ width: `${bufferedPct}%` }} />
-          {/* Progress */}
           <div className="absolute inset-y-0 left-0 bg-amber-400 rounded-full pointer-events-none" style={{ width: `${progress}%` }} />
           <input
-            type="range"
-            min={0}
-            max={duration || 100}
-            step={0.1}
-            value={currentTime}
+            type="range" min={0} max={duration || 100} step={0.1} value={currentTime}
             onChange={onSeek}
             onMouseDown={() => setSeeking(true)}
             onMouseUp={() => setSeeking(false)}
             className="absolute inset-0 w-full opacity-0 cursor-pointer h-full"
           />
-          {/* Thumb */}
           <div
             className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-amber-400 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
             style={{ left: `calc(${progress}% - 6px)` }}
@@ -338,46 +495,25 @@ export default function VideoPlayer({ sources, title, posterUrl, onClose, onSour
 
         {/* Controls row */}
         <div className="flex items-center gap-3">
-          {/* Skip back */}
-          <button
-            onClick={() => { if (videoRef.current) videoRef.current.currentTime -= 10 }}
-            className="text-white/70 hover:text-white transition-colors"
-          >
+          <button onClick={() => { if (videoRef.current) videoRef.current.currentTime -= 10 }} className="text-white/70 hover:text-white transition-colors">
             <SkipBack size={20} />
           </button>
-
-          {/* Play/Pause */}
           <button onClick={togglePlay} className="text-white hover:text-amber-400 transition-colors">
             {playing ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />}
           </button>
-
-          {/* Skip forward */}
-          <button
-            onClick={() => { if (videoRef.current) videoRef.current.currentTime += 10 }}
-            className="text-white/70 hover:text-white transition-colors"
-          >
+          <button onClick={() => { if (videoRef.current) videoRef.current.currentTime += 10 }} className="text-white/70 hover:text-white transition-colors">
             <SkipForward size={20} />
           </button>
 
-          {/* Volume */}
           <div className="flex items-center gap-2 group/vol">
             <button onClick={toggleMute} className="text-white/70 hover:text-white transition-colors">
               {muted || volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
             </button>
             <div className="w-0 overflow-hidden group-hover/vol:w-20 transition-all duration-200">
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.05}
-                value={muted ? 0 : volume}
-                onChange={onVolumeChange}
-                className="w-20 accent-amber-400 cursor-pointer"
-              />
+              <input type="range" min={0} max={1} step={0.05} value={muted ? 0 : volume} onChange={onVolumeChange} className="w-20 accent-amber-400 cursor-pointer" />
             </div>
           </div>
 
-          {/* Time */}
           <span className="text-white/60 text-xs tabular-nums ml-1">
             {formatTime(currentTime)} / {formatTime(duration)}
           </span>
@@ -391,36 +527,32 @@ export default function VideoPlayer({ sources, title, posterUrl, onClose, onSour
             </button>
             <div className="absolute bottom-full right-0 mb-2 bg-[#1a1a2e] border border-white/10 rounded-xl overflow-hidden hidden group-hover/speed:block min-w-[80px]">
               {[0.5, 0.75, 1, 1.25, 1.5, 2].map(r => (
-                <button
-                  key={r}
-                  onClick={() => setPlaybackRate(r)}
-                  className={`w-full text-left px-4 py-2 text-sm hover:bg-white/10 transition-colors ${playbackRate === r ? "text-amber-400" : "text-white/80"}`}
-                >
+                <button key={r} onClick={() => setPlaybackRate(r)}
+                  className={`w-full text-left px-4 py-2 text-sm hover:bg-white/10 transition-colors ${playbackRate === r ? "text-amber-400" : "text-white/80"}`}>
                   {r}x
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Captions toggle */}
-          {captions.length > 0 && (
-            <button
-              onClick={() => { setSettingsTab("captions"); setShowSettings(p => !p) }}
-              className={`transition-colors ${captionIdx >= 0 ? "text-amber-400" : "text-white/70 hover:text-white"}`}
-            >
-              <Subtitles size={20} />
-            </button>
-          )}
+          {/* Subtitles button — spinner while loading */}
+          <button
+            onClick={() => { setSettingsTab("captions"); setShowSettings(p => !p) }}
+            className={`relative transition-colors ${captionIdx >= 0 ? "text-amber-400" : "text-white/70 hover:text-white"}`}
+          >
+            <Subtitles size={20} />
+            {subtitlesLoading && (
+              <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full border border-black bg-amber-400 animate-pulse" />
+            )}
+          </button>
 
-          {/* Settings (quality) */}
           <button
             onClick={() => { setSettingsTab("quality"); setShowSettings(p => !p) }}
-            className={`transition-colors ${showSettings ? "text-amber-400" : "text-white/70 hover:text-white"}`}
+            className={`transition-colors ${showSettings && settingsTab === "quality" ? "text-amber-400" : "text-white/70 hover:text-white"}`}
           >
             <Settings size={20} />
           </button>
 
-          {/* Fullscreen */}
           <button onClick={toggleFullscreen} className="text-white/70 hover:text-white transition-colors">
             {fullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
           </button>
@@ -433,14 +565,10 @@ export default function VideoPlayer({ sources, title, posterUrl, onClose, onSour
           className="absolute bottom-20 right-4 w-64 bg-[#0f0f1a]/95 backdrop-blur border border-white/10 rounded-2xl overflow-hidden shadow-2xl"
           onClick={e => e.stopPropagation()}
         >
-          {/* Tabs */}
           <div className="flex border-b border-white/10">
             {(["quality", "captions"] as const).map(tab => (
-              <button
-                key={tab}
-                onClick={() => setSettingsTab(tab)}
-                className={`flex-1 py-3 text-xs font-semibold capitalize transition-colors ${settingsTab === tab ? "text-amber-400 border-b-2 border-amber-400" : "text-white/50 hover:text-white"}`}
-              >
+              <button key={tab} onClick={() => setSettingsTab(tab)}
+                className={`flex-1 py-3 text-xs font-semibold capitalize transition-colors ${settingsTab === tab ? "text-amber-400 border-b-2 border-amber-400" : "text-white/50 hover:text-white"}`}>
                 {tab}
               </button>
             ))}
@@ -449,11 +577,8 @@ export default function VideoPlayer({ sources, title, posterUrl, onClose, onSour
           {settingsTab === "quality" && (
             <div className="py-1 max-h-64 overflow-y-auto">
               {sources.map((s, i) => (
-                <button
-                  key={i}
-                  onClick={() => switchSource(i)}
-                  className={`w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-white/8 transition-colors ${sourceIdx === i ? "text-amber-400" : "text-white/80"}`}
-                >
+                <button key={i} onClick={() => switchSource(i)}
+                  className={`w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-white/8 transition-colors ${sourceIdx === i ? "text-amber-400" : "text-white/80"}`}>
                   <span>{s.label}</span>
                   {sourceIdx === i && <ChevronRight size={14} />}
                 </button>
@@ -462,21 +587,22 @@ export default function VideoPlayer({ sources, title, posterUrl, onClose, onSour
           )}
 
           {settingsTab === "captions" && (
-            <div className="py-1">
-              <button
-                onClick={() => setCaptionIdx(-1)}
-                className={`w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-white/8 transition-colors ${captionIdx === -1 ? "text-amber-400" : "text-white/80"}`}
-              >
+            <div className="py-1 max-h-64 overflow-y-auto">
+              {subtitlesLoading && (
+                <div className="flex items-center gap-2 px-4 py-3 text-white/40 text-xs">
+                  <div className="w-3 h-3 rounded-full border border-white/20 border-t-amber-400 animate-spin shrink-0" />
+                  Loading subtitles…
+                </div>
+              )}
+              <button onClick={() => setCaptionIdx(-1)}
+                className={`w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-white/8 transition-colors ${captionIdx === -1 ? "text-amber-400" : "text-white/80"}`}>
                 Off
                 {captionIdx === -1 && <ChevronRight size={14} />}
               </button>
               {captions.map((c, i) => (
-                <button
-                  key={c.id}
-                  onClick={() => setCaptionIdx(i)}
-                  className={`w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-white/8 transition-colors ${captionIdx === i ? "text-amber-400" : "text-white/80"}`}
-                >
-                  {c.language.toUpperCase()} — {i + 1}
+                <button key={c.id} onClick={() => setCaptionIdx(i)}
+                  className={`w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-white/8 transition-colors ${captionIdx === i ? "text-amber-400" : "text-white/80"}`}>
+                  {c.display ?? c.language}
                   {captionIdx === i && <ChevronRight size={14} />}
                 </button>
               ))}

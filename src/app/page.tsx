@@ -10,6 +10,7 @@ import { getMediaTitle, getMediaDate } from "@/lib/utils"
 import HeroCarousel from "@/components/hero/HeroCarousel"
 import SectionCarousel from "@/components/ui/SectionCarousel"
 import StreamingProviders from "@/components/ui/StreamingProviders"
+import AdsterraBanner from "@/components/ui/AdsterraBanner"
 import type { TMDBMedia } from "@/lib/tmdb/types"
 
 export const revalidate = 3600
@@ -55,6 +56,9 @@ export default async function HomePage() {
       {/* Hero */}
       <HeroCarousel items={trendingItems as TMDBMedia[]} />
 
+      {/* Ad below hero */}
+      <AdsterraBanner />
+
       {/* Sections */}
       <div className="space-y-14 py-14">
         <StreamingProviders />
@@ -63,6 +67,9 @@ export default async function HomePage() {
           items={toCardProps(popularMovieItems as TMDBMedia[], "movie")}
           defaultMediaType="movie"
         />
+
+        {/* Ad between sections */}
+        <AdsterraBanner />
 
         <SectionCarousel
           title="Popular TV Shows"

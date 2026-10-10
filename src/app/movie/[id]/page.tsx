@@ -155,6 +155,7 @@ export default async function MoviePage({ params }: Props) {
             <div className="flex flex-wrap items-center gap-3">
               <WatchButton
                 tmdbId={data.id}
+                imdbId={data.imdb_id}
                 title={data.title}
                 year={data.release_date?.slice(0, 4) ?? ""}
                 runtime={data.runtime ?? 0}

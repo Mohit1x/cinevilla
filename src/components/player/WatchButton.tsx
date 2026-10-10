@@ -8,13 +8,14 @@ const WatchModal = dynamic(() => import("@/components/player/WatchModal"), { ssr
 
 interface Props {
   tmdbId: number
+  imdbId?: string
   title: string
   year: string
   runtime: number
   posterUrl?: string
 }
 
-export default function WatchButton({ tmdbId, title, year, runtime, posterUrl }: Props) {
+export default function WatchButton({ tmdbId, imdbId, title, year, runtime, posterUrl }: Props) {
   const [open, setOpen] = useState(false)
 
   return (
@@ -29,6 +30,7 @@ export default function WatchButton({ tmdbId, title, year, runtime, posterUrl }:
       {open && (
         <WatchModal
           tmdbId={tmdbId}
+          imdbId={imdbId}
           title={title}
           year={year}
           runtime={runtime}
