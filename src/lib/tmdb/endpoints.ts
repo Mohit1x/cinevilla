@@ -11,6 +11,7 @@ import type {
   TMDBDiscoverParams,
   TMDBGenre,
   TMDBWatchProvider,
+  TMDBSeasonDetails,
 } from "./types"
 
 export async function getTrending(
@@ -166,4 +167,9 @@ export async function getWatchProviders(region = "US"): Promise<TMDBWatchProvide
     params: { language: "en-US", watch_region: region },
   })
   return data.results
+}
+
+export async function getTVSeason(tvId: number, seasonNumber: number): Promise<TMDBSeasonDetails> {
+  const { data } = await tmdbClient.get<TMDBSeasonDetails>(`/tv/${tvId}/season/${seasonNumber}`)
+  return data
 }

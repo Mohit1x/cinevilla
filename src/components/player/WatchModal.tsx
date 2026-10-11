@@ -82,8 +82,8 @@ export default function WatchModal({ tmdbId, imdbId, title, year, runtime, poste
       title,
       year,
       runtime: String(runtime),
-      ...(mediaType === "tv" && season != null ? { season: String(season) } : {}),
-      ...(mediaType === "tv" && episode != null ? { episode: String(episode) } : {}),
+      ...(mediaType === "tv" && season != null ? { seasonId: String(season) } : {}),
+      ...(mediaType === "tv" && episode != null ? { episodeId: String(episode) } : {}),
     })
 
     while (!cancelled()) {
@@ -95,8 +95,9 @@ export default function WatchModal({ tmdbId, imdbId, title, year, runtime, poste
           const newSources: Source[] = data.sources.filter((s: Source) => !fetchedUrls.has(s.url))
           newSources.forEach((s: Source) => fetchedUrls.add(s.url))
           if (newSources.length) setSources(prev => [...prev, ...newSources])
-          setLoading(false)
-          return
+          // keep polling if only a single 480p source came back
+          const only480 = data.sources.length === 1 && data.sources[0].label?.toLowerCase().includes("480")
+          if (!only480) { setLoading(false); return }
         }
       } catch { /* retry */ }
       if (!cancelled()) await new Promise(r => setTimeout(r, 2000))
@@ -106,17 +107,14 @@ export default function WatchModal({ tmdbId, imdbId, title, year, runtime, poste
   useEffect(() => {
     let cancelled = false
     fetchSources(() => cancelled)
-    // Fetch subtitles in parallel if imdbId is available
-    if (imdbId) {
-      fetch(`/api/subtitles?tmdbId=${tmdbId}&imdbId=${encodeURIComponent(imdbId)}`)
-        .then(r => r.json())
-        .then(data => {
-          if (!cancelled) { setSubtitles(data); setSubtitlesLoading(false) }
-        })
-        .catch(() => { setSubtitlesLoading(false) })
-    } else {
-      setSubtitlesLoading(false)
-    }
+    // Fetch subtitles — use imdbId if available, fallback to tmdbId only
+    const subtitleUrl = imdbId
+      ? `/api/subtitles?tmdbId=${tmdbId}&imdbId=${encodeURIComponent(imdbId)}`
+      : `/api/subtitles?tmdbId=${tmdbId}`
+    fetch(subtitleUrl)
+      .then(r => r.json())
+      .then(data => { if (!cancelled) { setSubtitles(data); setSubtitlesLoading(false) } })
+      .catch(() => { if (!cancelled) setSubtitlesLoading(false) })
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tmdbId])

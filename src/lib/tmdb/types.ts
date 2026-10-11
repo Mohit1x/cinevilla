@@ -129,3 +129,26 @@ export interface TMDBWatchProvider {
   logo_path: string
   display_priority: number
 }
+
+export interface TMDBEpisode {
+  id: number
+  name: string
+  overview: string
+  episode_number: number
+  season_number: number
+  air_date: string
+  runtime: number | null
+  still_path: string | null
+  vote_average: number
+}
+
+export interface TMDBSeasonDetails {
+  id: number
+  name: string
+  overview: string
+  season_number: number
+  poster_path: string | null
+  air_date: string
+  vote_average: number
+  episodes: TMDBEpisode[]
+}

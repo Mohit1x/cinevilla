@@ -12,6 +12,25 @@ function srtToVtt(srt: string): string {
   return `WEBVTT\n\n${converted}\n`
 }
 
+function shiftVtt(vtt: string, offsetSeconds: number): string {
+  if (offsetSeconds === 0) return vtt
+  return vtt.replace(
+    /(\d{2}:\d{2}:\d{2}\.\d{3}) --> (\d{2}:\d{2}:\d{2}\.\d{3})/g,
+    (_, start, end) => `${shiftTimestamp(start, offsetSeconds)} --> ${shiftTimestamp(end, offsetSeconds)}`
+  )
+}
+
+function shiftTimestamp(ts: string, offsetSeconds: number): string {
+  const [h, m, s] = ts.split(":")
+  const totalMs = (parseInt(h) * 3600 + parseInt(m) * 60 + parseFloat(s)) * 1000 + offsetSeconds * 1000
+  const clamped = Math.max(0, totalMs)
+  const hh = Math.floor(clamped / 3600000)
+  const mm = Math.floor((clamped % 3600000) / 60000)
+  const ss = Math.floor((clamped % 60000) / 1000)
+  const ms = Math.floor(clamped % 1000)
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}.${String(ms).padStart(3, "0")}`
+}
+
 export async function GET(req: NextRequest) {
   const url = req.nextUrl.searchParams.get("url")
   if (!url) return new NextResponse("Missing url", { status: 400 })

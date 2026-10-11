@@ -7,12 +7,15 @@ import {
   getTVCredits,
   getTVRecommendations,
   getTVVideos,
+  getTVSeason,
 } from "@/lib/tmdb/endpoints"
 import { getTmdbImage, getTmdbBackdrop } from "@/lib/tmdb/image"
 import { formatDate, formatRating } from "@/lib/utils"
 import SectionCarousel from "@/components/ui/SectionCarousel"
 import CastCarousel from "@/components/ui/CastCarousel"
 import WatchlistButton from "@/components/ui/WatchlistButton"
+import SeasonEpisodes from "@/components/ui/SeasonEpisodes"
+import TVWatchButton from "@/components/player/TVWatchButton"
 
 export const revalidate = 3600
 
@@ -26,11 +29,12 @@ export default async function TVPage({ params }: Props) {
 
   if (isNaN(tvId)) notFound()
 
-  const [show, credits, recommendations, videos] = await Promise.allSettled([
+  const [show, credits, recommendations, videos, season1] = await Promise.allSettled([
     getTVDetails(tvId),
     getTVCredits(tvId),
     getTVRecommendations(tvId),
     getTVVideos(tvId),
+    getTVSeason(tvId, 1),
   ])
 
   if (show.status === "rejected") notFound()
@@ -49,6 +53,9 @@ export default async function TVPage({ params }: Props) {
   const backdrop = getTmdbBackdrop(data.backdrop_path)
   const poster = getTmdbImage(data.poster_path, "w500")
   const runtime = data.episode_run_time?.[0]
+  const seasonData = season1.status === "fulfilled" ? season1.value : null
+  const ep1Runtime = seasonData?.episodes?.[0]?.runtime ?? runtime ?? 30
+  const posterUrl = data.poster_path ? getTmdbImage(data.poster_path, "w500") : undefined
 
   return (
     <main className="bg-[#0a0a0f] min-h-screen">
@@ -157,14 +164,25 @@ export default async function TVPage({ params }: Props) {
 
             {/* Actions */}
             <div className="flex flex-wrap items-center gap-3">
-              <button
-                disabled
-                className="flex items-center gap-2.5 px-6 py-3 bg-amber-400/20 border border-amber-400/30 text-amber-400/60 font-bold text-sm rounded-xl cursor-not-allowed"
-                title="Streaming coming soon"
-              >
-                <Play size={16} />
-                Watch Now — Coming Soon
-              </button>
+              {seasonData && seasonData.episodes.length > 0 ? (
+                <TVWatchButton
+                  tvId={data.id}
+                  title={data.name}
+                  year={data.first_air_date?.slice(0, 4) ?? ""}
+                  runtime={ep1Runtime}
+                  posterUrl={posterUrl}
+                  season={1}
+                  episode={1}
+                />
+              ) : (
+                <button
+                  disabled
+                  className="flex items-center gap-2.5 px-6 py-3 bg-amber-400/20 border border-amber-400/30 text-amber-400/60 font-bold text-sm rounded-xl cursor-not-allowed"
+                >
+                  <Play size={16} />
+                  Coming Soon
+                </button>
+              )}
 
               <WatchlistButton
                 item={{
@@ -192,6 +210,19 @@ export default async function TVPage({ params }: Props) {
             </div>
           </div>
         </div>
+
+        {/* Episodes */}
+        {seasonData && data.number_of_seasons > 0 && (
+          <SeasonEpisodes
+            tvId={data.id}
+            title={data.name}
+            year={data.first_air_date?.slice(0, 4) ?? ""}
+            runtime={runtime ?? 30}
+            posterUrl={posterUrl}
+            totalSeasons={data.number_of_seasons}
+            initialSeason={seasonData}
+          />
+        )}
 
         {/* Cast */}
         {cast.length > 0 && (

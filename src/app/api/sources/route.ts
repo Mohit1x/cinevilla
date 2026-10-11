@@ -21,14 +21,35 @@ const HEADERS = {
   "Content-Type": "application/json",
 }
 
-async function fetchAdditional(sp: URLSearchParams): Promise<RawSource[] | null> {
+async function fetchAdditional(
+  tmdbId: string,
+  title: string,
+  year: string,
+  runtime: string,
+  mediaType: string,
+  season: string | null,
+  episode: string | null,
+): Promise<RawSource[] | null> {
   try {
     const url = new URL("https://dulo.mov/api/sources/additional")
-    sp.forEach((v, k) => url.searchParams.set(k, v))
+    url.searchParams.set("tmdbId", tmdbId)
+    url.searchParams.set("type", mediaType)
+    url.searchParams.set("progressive", "true")
+    url.searchParams.set("title", title)
+    url.searchParams.set("year", year)
+    url.searchParams.set("runtime", runtime)
+    if (season) url.searchParams.set("seasonId", season)
+    if (episode) url.searchParams.set("episodeId", episode)
+    console.log("[additional] fetching:", url.toString())
     const res = await fetch(url.toString(), { headers: HEADERS, cache: "no-store" })
-    const data = await res.json()
-    if (data.found && data.sources?.length && !data.pending) return data.sources
-  } catch { /* ignore */ }
+    console.log("[additional] status:", res.status, "content-type:", res.headers.get("content-type"))
+    const text = await res.text()
+    console.log("[additional] raw text (500 chars):", text.slice(0, 500))
+    let data: { found?: boolean; pending?: boolean; sources?: RawSource[] }
+    try { data = JSON.parse(text) } catch { console.error("[additional] not JSON"); return null }
+    console.log("[additional] found:", data.found, "pending:", data.pending, "sources:", data.sources?.length)
+    if (data.found && data.sources?.length) return data.sources
+  } catch (e) { console.error("[additional] error:", e) }
   return null
 }
 
@@ -49,6 +70,7 @@ async function fetchBrowser(
       { headers: HEADERS, cache: "no-store" }
     )
     const { seed } = await seedRes.json()
+    console.log("[browser] seed:", seed)
 
     // Step 2: vortex payload
     const payloadUrl = new URL("https://api.wecollege.net/paris/sources")
@@ -62,9 +84,11 @@ async function fetchBrowser(
     if (mediaType === "tv" && season) payloadUrl.searchParams.set("seasonId", season)
     if (mediaType === "tv" && episode) payloadUrl.searchParams.set("episodeId", episode)
     if (imdbId) payloadUrl.searchParams.set("imdbId", imdbId)
+    console.log("[browser] vortex url:", payloadUrl.toString())
 
     const payloadRes = await fetch(payloadUrl.toString(), { headers: HEADERS, cache: "no-store" })
     const vortex = await payloadRes.json()
+    console.log("[browser] vortex error:", vortex.error)
     if (vortex.error) return null
 
     // Step 3: POST to browser
@@ -79,6 +103,7 @@ async function fetchBrowser(
     }
     if (mediaType === "tv" && season) body.seasonId = Number(season)
     if (mediaType === "tv" && episode) body.episodeId = Number(episode)
+    console.log("[browser] POST body (no vortex):", JSON.stringify({ ...body, vortex: "..." }))
 
     const browserRes = await fetch("https://dulo.mov/api/sources/browser", {
       method: "POST",
@@ -87,8 +112,9 @@ async function fetchBrowser(
       cache: "no-store",
     })
     const data = await browserRes.json()
+    console.log("[browser] response sources count:", data.sources?.length, "labels:", data.sources?.map((s: RawSource) => s.label))
     if (data.sources?.length) return data.sources
-  } catch { /* ignore */ }
+  } catch (e) { console.error("[browser] error:", e) }
   return null
 }
 
@@ -99,20 +125,21 @@ export async function GET(req: NextRequest) {
   const year = sp.get("year") ?? ""
   const runtime = sp.get("runtime") ?? "45"
   const mediaType = sp.get("type") ?? "movie"
-  const season = sp.get("season")
-  const episode = sp.get("episode")
+  const season = sp.get("seasonId")
+  const episode = sp.get("episodeId")
   const imdbId = sp.get("imdbId") ?? ""
 
   try {
     // Race both sources — first one with results wins
     const result = await Promise.any([
-      fetchAdditional(sp).then(s => { if (!s) throw new Error("no sources"); return s }),
+      fetchAdditional(tmdbId, title, year, runtime, mediaType, season, episode).then(s => { if (!s) throw new Error("no sources"); return s }),
       fetchBrowser(tmdbId, title, year, runtime, mediaType, season, episode, imdbId)
         .then(s => { if (!s) throw new Error("no sources"); return s }),
     ])
-
+    console.log("[sources] winner sources count:", result.length, "labels:", result.map(s => s.label))
     return NextResponse.json({ found: true, sources: proxySources(result) })
-  } catch {
+  } catch (e) {
+    console.error("[sources] both failed:", e)
     return NextResponse.json({ found: false, pending: true })
   }
 }

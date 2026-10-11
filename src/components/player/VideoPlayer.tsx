@@ -66,6 +66,9 @@ export default function VideoPlayer({ tmdbId, sources, subtitles = [], subtitles
   const [buffering, setBuffering] = useState(true)
   const [activeCue, setActiveCue] = useState<string>("")
   const [resumeFrom, setResumeFrom] = useState<number | null>(null)
+  const [captionSearch, setCaptionSearch] = useState("")
+  const [subtitleOffset, setSubtitleOffset] = useState(0)
+  const subtitleOffsetRef = useRef(0)
 
   const hlsRef = useRef<Hls | null>(null)
   const currentSource = sources[sourceIdx]
@@ -181,6 +184,7 @@ export default function VideoPlayer({ tmdbId, sources, subtitles = [], subtitles
     if (captionIdx === -1) {
       console.log("[caption] OFF")
       setActiveCue("")
+      setSubtitleOffset(0)
       Array.from(v.textTracks).forEach(t => { t.mode = "disabled" })
       return
     }
@@ -213,15 +217,18 @@ export default function VideoPlayer({ tmdbId, sources, subtitles = [], subtitles
     let interval: ReturnType<typeof setInterval>
 
     const startPolling = () => {
-      console.log(`[caption] polling — cues=${textTrack.cues?.length ?? 0} videoTime=${v.currentTime.toFixed(1)}s`)
+      console.log(`[caption] polling — cues=${textTrack.cues?.length ?? 0} videoTime=${v.currentTime.toFixed(1)}s offset=${subtitleOffsetRef.current}`)
       interval = setInterval(() => {
         if (textTrack.mode !== "hidden") textTrack.mode = "hidden"
-        const active = textTrack.activeCues
-        if (active && active.length > 0) {
-          const text = Array.from(active)
-            .map(c => (c as VTTCue).text.replace(/<[^>]+>/g, ""))
-            .join("\n")
-          setActiveCue(text)
+        const t = v.currentTime - subtitleOffsetRef.current
+        const cues = textTrack.cues
+        if (cues && cues.length > 0) {
+          const active = Array.from(cues).filter(c => t >= c.startTime && t < c.endTime)
+          if (active.length > 0) {
+            setActiveCue(active.map(c => (c as VTTCue).text.replace(/<[^>]+>/g, "")).join("\n"))
+          } else {
+            setActiveCue("")
+          }
         } else {
           setActiveCue("")
         }
@@ -247,7 +254,12 @@ export default function VideoPlayer({ tmdbId, sources, subtitles = [], subtitles
       clearInterval(interval)
       setActiveCue("")
     }
-  }, [captionIdx, captions])
+  }, [captionIdx, captions]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep ref in sync so polling interval always reads latest offset
+  useEffect(() => {
+    subtitleOffsetRef.current = subtitleOffset
+  }, [subtitleOffset])
 
   // --- Source loader ---
   useEffect(() => {
@@ -260,6 +272,9 @@ export default function VideoPlayer({ tmdbId, sources, subtitles = [], subtitles
     v.load()
     setBuffering(true)
     setPlaying(false)
+    streamStartOffsetRef.current = 0
+    subtitleOffsetRef.current = 0
+    setSubtitleOffset(0)
 
     const url = currentSource.url
     if (Hls.isSupported()) {
@@ -587,25 +602,50 @@ export default function VideoPlayer({ tmdbId, sources, subtitles = [], subtitles
           )}
 
           {settingsTab === "captions" && (
-            <div className="py-1 max-h-64 overflow-y-auto">
-              {subtitlesLoading && (
-                <div className="flex items-center gap-2 px-4 py-3 text-white/40 text-xs">
-                  <div className="w-3 h-3 rounded-full border border-white/20 border-t-amber-400 animate-spin shrink-0" />
-                  Loading subtitles…
-                </div>
-              )}
-              <button onClick={() => setCaptionIdx(-1)}
-                className={`w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-white/8 transition-colors ${captionIdx === -1 ? "text-amber-400" : "text-white/80"}`}>
-                Off
-                {captionIdx === -1 && <ChevronRight size={14} />}
-              </button>
-              {captions.map((c, i) => (
-                <button key={c.id} onClick={() => setCaptionIdx(i)}
-                  className={`w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-white/8 transition-colors ${captionIdx === i ? "text-amber-400" : "text-white/80"}`}>
-                  {c.display ?? c.language}
-                  {captionIdx === i && <ChevronRight size={14} />}
+            <div className="flex flex-col max-h-72">
+              <div className="px-3 pt-2 pb-1 space-y-1.5">
+                <input
+                  type="text"
+                  placeholder="Search language…"
+                  value={captionSearch}
+                  onChange={e => setCaptionSearch(e.target.value)}
+                  onClick={e => e.stopPropagation()}
+                  className="w-full bg-white/8 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white placeholder-white/30 focus:outline-none focus:border-amber-400/50"
+                />
+                {captionIdx >= 0 && (
+                  <div className="flex items-center justify-between gap-2" onClick={e => e.stopPropagation()}>
+                    <span className="text-white/40 text-xs">Sync</span>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => setSubtitleOffset(o => Math.round((o - 0.5) * 10) / 10)} className="w-6 h-6 rounded bg-white/10 hover:bg-white/20 text-white text-xs flex items-center justify-center">−</button>
+                      <span className="text-white/70 text-xs tabular-nums w-12 text-center">{subtitleOffset > 0 ? `+${subtitleOffset}s` : `${subtitleOffset}s`}</span>
+                      <button onClick={() => setSubtitleOffset(o => Math.round((o + 0.5) * 10) / 10)} className="w-6 h-6 rounded bg-white/10 hover:bg-white/20 text-white text-xs flex items-center justify-center">+</button>
+                      {subtitleOffset !== 0 && <button onClick={() => setSubtitleOffset(0)} className="text-white/30 hover:text-white/70 text-xs ml-0.5">↺</button>}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="overflow-y-auto py-1">
+                {subtitlesLoading && (
+                  <div className="flex items-center gap-2 px-4 py-3 text-white/40 text-xs">
+                    <div className="w-3 h-3 rounded-full border border-white/20 border-t-amber-400 animate-spin shrink-0" />
+                    Loading subtitles…
+                  </div>
+                )}
+                <button onClick={() => setCaptionIdx(-1)}
+                  className={`w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-white/8 transition-colors ${captionIdx === -1 ? "text-amber-400" : "text-white/80"}`}>
+                  Off
+                  {captionIdx === -1 && <ChevronRight size={14} />}
                 </button>
-              ))}
+                {captions
+                  .filter(c => (c.display ?? c.language).toLowerCase().includes(captionSearch.toLowerCase()))
+                  .map((c, i) => (
+                    <button key={c.id} onClick={() => setCaptionIdx(captions.indexOf(c))}
+                      className={`w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-white/8 transition-colors ${captionIdx === captions.indexOf(c) ? "text-amber-400" : "text-white/80"}`}>
+                      {c.display ?? c.language}
+                      {captionIdx === captions.indexOf(c) && <ChevronRight size={14} />}
+                    </button>
+                  ))}
+              </div>
             </div>
           )}
         </div>

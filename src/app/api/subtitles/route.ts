@@ -6,13 +6,13 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl
   const tmdbId = searchParams.get("tmdbId")
   const imdbId = searchParams.get("imdbId")
-  if (!tmdbId || !imdbId) return NextResponse.json([], { status: 400 })
+  if (!tmdbId) return NextResponse.json([], { status: 400 })
 
   try {
-    const res = await fetch(
-      `https://dulo.mov/api/subtitles/search?id=${tmdbId}&imdb=${imdbId}`,
-      { cache: "no-store" }
-    )
+    const fetchUrl = imdbId
+      ? `https://dulo.mov/api/subtitles/search?id=${tmdbId}&imdb=${imdbId}`
+      : `https://dulo.mov/api/subtitles/search?id=${tmdbId}`
+    const res = await fetch(fetchUrl, { cache: "no-store" })
     const data: RawSub[] = await res.json()
     console.log("[/api/subtitles] raw response count:", data.length, "first:", data[0])
 
