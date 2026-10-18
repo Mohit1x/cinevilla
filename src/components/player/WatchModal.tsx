@@ -1,37 +1,10 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { createPortal } from "react-dom"
 import Image from "next/image"
 import VideoPlayer from "@/components/player/VideoPlayer"
 import { X } from "lucide-react"
-
-function AdBanner({ optKey, src, width, height }: { optKey: string; src: string; width: number; height: number }) {
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!ref.current) return
-    const container = ref.current
-    const html = `<!DOCTYPE html><html><head><style>*{margin:0;padding:0;overflow:hidden}</style></head><body>
-<script>atOptions={'key':'${optKey}','format':'iframe','height':${height},'width':${width},'params':{}}<\/script>
-<script src="${src}"><\/script>
-</body></html>`
-    const blob = new Blob([html], { type: "text/html" })
-    const url = URL.createObjectURL(blob)
-    const iframe = document.createElement("iframe")
-    iframe.src = url
-    iframe.width = String(width)
-    iframe.height = String(height)
-    iframe.style.border = "none"
-    iframe.scrolling = "no"
-    container.appendChild(iframe)
-    return () => {
-      URL.revokeObjectURL(url)
-      if (container.contains(iframe)) container.removeChild(iframe)
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-  return <div ref={ref} style={{ width, height, minWidth: width, minHeight: height }} />
-}
 
 interface WatchModalProps {
   tmdbId: number
@@ -148,18 +121,8 @@ export default function WatchModal({ tmdbId, imdbId, title, year, runtime, poste
     <div className="fixed inset-0 z-[9999] bg-black flex items-center justify-center">
       {loading && (
         <div className="flex flex-col items-center w-full h-full">
-          {/* Top banner ad */}
-          <div className="flex justify-center items-center py-2 w-full shrink-0">
-            <AdBanner optKey="15127a25ba1e2e69a6489bcae8db1cdc" src="https://bancadeltempoidea.org/22/15127a25ba1e2e69a6489bcae8db1cdc" width={468} height={60} />
-          </div>
-
           {/* Middle row: left ad + poster + right ad */}
           <div className="flex flex-1 items-center justify-center gap-6 w-full">
-            {/* Left vertical ad */}
-            <div className="hidden lg:flex items-center justify-center shrink-0">
-              <AdBanner optKey="a3a51579da55d85447afc3a1c263fe87" src="https://bancadeltempoidea.org/22/a3a51579da55d85447afc3a1c263fe87" width={160} height={600} />
-            </div>
-
             {/* Center: poster + loading */}
             <div className="relative flex flex-col items-center max-w-sm w-full px-6">
               <button onClick={onClose} className="absolute -top-10 right-0 text-white/40 hover:text-white transition-colors">
@@ -185,16 +148,6 @@ export default function WatchModal({ tmdbId, imdbId, title, year, runtime, poste
                 {STEPS[stepIdx]}
               </p>
             </div>
-
-            {/* Right vertical ad */}
-            <div className="hidden lg:flex items-center justify-center shrink-0">
-              <AdBanner optKey="a3a51579da55d85447afc3a1c263fe87" src="https://bancadeltempoidea.org/22/a3a51579da55d85447afc3a1c263fe87" width={160} height={600} />
-            </div>
-          </div>
-
-          {/* Bottom banner ad */}
-          <div className="flex justify-center items-center py-2 w-full shrink-0">
-            <AdBanner optKey="15127a25ba1e2e69a6489bcae8db1cdc" src="https://bancadeltempoidea.org/22/15127a25ba1e2e69a6489bcae8db1cdc" width={468} height={60} />
           </div>
         </div>
       )}

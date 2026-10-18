@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import Script from "next/script";
 import "./globals.css";
 import Navbar from "@/components/ui/Navbar";
 import Footer from "@/components/ui/Footer";
@@ -27,16 +26,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${inter.variable} h-full`}>
-      <head>
-        <meta name="google-adsense-account" content="ca-pub-5410643778743575" />
-
-        <Script
-          async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5410643778743575"
-          crossOrigin="anonymous"
-        />
-      </head>
-
+      <head />
       <body className="min-h-full flex flex-col bg-[#0a0a0f] text-white antialiased">
         <Navbar />
 

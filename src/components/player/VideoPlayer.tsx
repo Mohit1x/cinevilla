@@ -272,7 +272,6 @@ export default function VideoPlayer({ tmdbId, sources, subtitles = [], subtitles
     v.load()
     setBuffering(true)
     setPlaying(false)
-    streamStartOffsetRef.current = 0
     subtitleOffsetRef.current = 0
     setSubtitleOffset(0)
 
