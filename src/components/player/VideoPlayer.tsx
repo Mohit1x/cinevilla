@@ -153,102 +153,54 @@ export default function VideoPlayer({ tmdbId, sources, subtitles = [], subtitles
     return () => document.removeEventListener("fullscreenchange", onChange)
   }, [])
 
-  // --- Track management: append once, never remove/re-add ---
-  useEffect(() => {
-    const v = videoRef.current
-    if (!v || captions.length === 0) return
-
-    captions.forEach(c => {
-      const label = c.display ?? c.language
-      if (Array.from(v.querySelectorAll("track")).find(el => el.label === label)) return
-      const el = document.createElement("track")
-      el.kind = "subtitles"
-      el.src = c.url
-      el.srclang = c.language
-      el.label = label
-      el.default = false
-      v.appendChild(el)
-      console.log("[tracks] appended:", label, c.url)
-    })
-
-    setTimeout(() => {
-      Array.from(v.textTracks).forEach(t => { t.mode = "disabled" })
-    }, 0)
-  }, [captions])
-
-  // --- Cue renderer ---
+  // --- Cue renderer: add track on demand, remove on deselect ---
   useEffect(() => {
     const v = videoRef.current
     if (!v) return
 
-    if (captionIdx === -1) {
-      console.log("[caption] OFF")
-      setActiveCue("")
-      setSubtitleOffset(0)
-      Array.from(v.textTracks).forEach(t => { t.mode = "disabled" })
-      return
-    }
+    // Remove any existing subtitle tracks to avoid stale cache
+    Array.from(v.querySelectorAll("track")).forEach(el => el.remove())
+    setActiveCue("")
+
+    if (captionIdx === -1) return
 
     const caption = captions[captionIdx]
-    const label = caption?.display ?? caption?.language ?? ""
-    console.log(`[caption] selected: "${label}" idx=${captionIdx} videoTime=${v.currentTime.toFixed(1)}s`)
+    if (!caption) return
+    const label = caption.display ?? caption.language
 
-    // Find the HTMLTrackElement by label
-    const trackEl = Array.from(v.querySelectorAll("track") as NodeListOf<HTMLTrackElement>)
-      .find(el => el.label === label)
+    console.log(`[caption] loading: "${label}" url=${caption.url}`)
 
-    if (!trackEl) {
-      console.warn("[caption] no <track> element found for label:", label)
-      return
-    }
-
-    // The TextTrack is on trackEl.track, readyState is on the HTMLTrackElement itself
-    const textTrack = trackEl.track
-    console.log(`[caption] trackEl.readyState=${trackEl.readyState} textTrack.mode=${textTrack?.mode} cues=${textTrack?.cues?.length ?? "null"}`)
-
-    // Disable all others
-    Array.from(v.querySelectorAll("track") as NodeListOf<HTMLTrackElement>).forEach(el => {
-      if (el.label !== label) el.track.mode = "disabled"
-    })
-
-    // Set to hidden so browser loads cues but doesn't render natively
-    textTrack.mode = "hidden"
+    const el = document.createElement("track")
+    el.kind = "subtitles"
+    el.src = caption.url + "&_cb=" + Date.now()
+    el.srclang = caption.language
+    el.label = label
+    el.default = false
+    v.appendChild(el)
+    el.track.mode = "hidden"
 
     let interval: ReturnType<typeof setInterval>
 
     const startPolling = () => {
-      console.log(`[caption] polling — cues=${textTrack.cues?.length ?? 0} videoTime=${v.currentTime.toFixed(1)}s offset=${subtitleOffsetRef.current}`)
+      console.log(`[caption] ▶ polling — cues=${el.track.cues?.length ?? 0}`)
       interval = setInterval(() => {
-        if (textTrack.mode !== "hidden") textTrack.mode = "hidden"
-        const t = v.currentTime - subtitleOffsetRef.current
-        const cues = textTrack.cues
-        if (cues && cues.length > 0) {
-          const active = Array.from(cues).filter(c => t >= c.startTime && t < c.endTime)
-          if (active.length > 0) {
-            setActiveCue(active.map(c => (c as VTTCue).text.replace(/<[^>]+>/g, "")).join("\n"))
-          } else {
-            setActiveCue("")
-          }
+        if (el.track.mode !== "hidden") el.track.mode = "hidden"
+        const active = el.track.activeCues
+        if (active && active.length > 0) {
+          setActiveCue(Array.from(active).map(c => (c as VTTCue).text.replace(/<[^>]+>/g, "")).join("\n"))
         } else {
           setActiveCue("")
         }
       }, 100)
     }
 
-    // HTMLTrackElement.readyState: 0=NONE, 1=LOADING, 2=LOADED, 3=ERROR
-    if (trackEl.readyState === 2) {
-      console.log("[caption] already loaded")
+    el.addEventListener("load", () => {
+      console.log(`[caption] ✅ loaded — cues=${el.track.cues?.length ?? 0}`)
       startPolling()
-    } else {
-      console.log(`[caption] waiting for load (trackEl.readyState=${trackEl.readyState})`)
-      trackEl.addEventListener("load", () => {
-        console.log(`[caption] loaded — cues=${textTrack.cues?.length ?? 0}`)
-        startPolling()
-      }, { once: true })
-      trackEl.addEventListener("error", () => {
-        console.error("[caption] failed to load:", trackEl.src)
-      }, { once: true })
-    }
+    }, { once: true })
+    el.addEventListener("error", (e) => {
+      console.error(`[caption] ❌ error loading:`, caption.url, e)
+    }, { once: true })
 
     return () => {
       clearInterval(interval)

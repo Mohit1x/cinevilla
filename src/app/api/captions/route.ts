@@ -12,63 +12,66 @@ function srtToVtt(srt: string): string {
   return `WEBVTT\n\n${converted}\n`
 }
 
-function shiftVtt(vtt: string, offsetSeconds: number): string {
-  if (offsetSeconds === 0) return vtt
-  return vtt.replace(
-    /(\d{2}:\d{2}:\d{2}\.\d{3}) --> (\d{2}:\d{2}:\d{2}\.\d{3})/g,
-    (_, start, end) => `${shiftTimestamp(start, offsetSeconds)} --> ${shiftTimestamp(end, offsetSeconds)}`
-  )
-}
-
-function shiftTimestamp(ts: string, offsetSeconds: number): string {
-  const [h, m, s] = ts.split(":")
-  const totalMs = (parseInt(h) * 3600 + parseInt(m) * 60 + parseFloat(s)) * 1000 + offsetSeconds * 1000
-  const clamped = Math.max(0, totalMs)
-  const hh = Math.floor(clamped / 3600000)
-  const mm = Math.floor((clamped % 3600000) / 60000)
-  const ss = Math.floor((clamped % 60000) / 1000)
-  const ms = Math.floor(clamped % 1000)
-  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}.${String(ms).padStart(3, "0")}`
-}
-
 export async function GET(req: NextRequest) {
-  const url = req.nextUrl.searchParams.get("url")
-  if (!url) return new NextResponse("Missing url", { status: 400 })
+  // Use req.nextUrl.searchParams — Next.js decodes exactly once, which is correct
+  const targetUrl = req.nextUrl.searchParams.get("url")
+  if (!targetUrl) return new NextResponse("Missing url", { status: 400 })
+  console.log("[captions] fetching:", targetUrl)
 
   try {
-    const res = await fetch(url, {
-      headers: { "Referer": "https://dulo.mov/", "Origin": "https://dulo.mov" },
+    const res = await fetch(targetUrl, {
+      headers: {
+        "Referer": targetUrl.includes("movenerds") ? "https://api.movenerds.space/" : "https://dulo.mov/",
+        "Origin": targetUrl.includes("movenerds") ? "https://api.movenerds.space" : "https://dulo.mov",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      },
       cache: "no-store",
     })
 
+    console.log("[captions] upstream status:", res.status, "content-type:", res.headers.get("content-type"))
+
     const buf = await res.arrayBuffer()
     const bytes = new Uint8Array(buf)
-    console.log("[captions] buf byteLength:", buf.byteLength, "first special bytes:", Array.from(bytes.slice(40, 55)).map(b => b.toString(16).padStart(2,'0')).join(' '))
+    console.log("[captions] byteLength:", buf.byteLength)
 
-    // Detect encoding: if file has bytes > 0x7F that form invalid UTF-8 sequences,
-    // it's latin1/windows-1252. We check by attempting strict UTF-8 decode.
     let text: string
     try {
       text = new TextDecoder("utf-8", { fatal: true }).decode(bytes)
-      console.log("[captions] decoded as utf-8, sample:", text.substring(40, 80))
     } catch {
-      // Invalid UTF-8 — decode as windows-1252
       text = new TextDecoder("windows-1252").decode(bytes)
-      console.log("[captions] decoded as windows-1252, sample:", text.substring(40, 80))
     }
 
-    if (!text.trimStart().startsWith("WEBVTT")) text = srtToVtt(text)
+    console.log("[captions] first 80 chars:", text.substring(0, 80))
+
+    // Catch error responses disguised as WEBVTT
+    if (text.includes("\"error\"") && text.includes("CORS")) {
+      console.error("[captions] upstream returned CORS error:", text.substring(0, 200))
+      return new NextResponse("Upstream blocked request", { status: 502 })
+    }
+
+    const trimmed = text.trimStart()
+    if (!trimmed.startsWith("WEBVTT")) {
+      // Check if it's already VTT-formatted (timestamps use . not ,)
+      if (/\d{2}:\d{2}:\d{2}\.\d{3}/.test(trimmed)) {
+        // Already VTT cues, just prepend the header
+        text = `WEBVTT\n\n${trimmed}`
+      } else {
+        text = srtToVtt(text)
+      }
+    } else {
+      text = trimmed
+    }
 
     return new NextResponse(text, {
       status: 200,
       headers: {
         "Content-Type": "text/vtt; charset=utf-8",
         "Access-Control-Allow-Origin": "*",
-        "Cache-Control": "public, max-age=3600",
-        // No Content-Disposition — browser rejects <track> loads with attachment header
+        "Cache-Control": "no-store",
       },
     })
-  } catch {
+  } catch (e) {
+    console.error("[captions] fetch failed:", e)
     return new NextResponse("Failed to fetch captions", { status: 502 })
   }
 }

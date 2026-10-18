@@ -1,17 +1,82 @@
 import { NextRequest, NextResponse } from "next/server"
 
+const SERVER_NAMES: [RegExp, string][] = [
+  [/luna/i, "Luna"],
+  [/orion/i, "Orion"],
+  [/atlas/i, "Atlas"],
+  [/dcloud/i, "DCloud"],
+  [/1080/i, "Orion"],
+  [/720/i, "Luna"],
+  [/480/i, "Atlas"],
+]
+
+function brandLabel(label: string, idx: number): string {
+  const res = label.match(/\d{3,4}p/)?.[0] ?? ""
+  for (const [re, server] of SERVER_NAMES) {
+    if (re.test(label)) return `CineVilla - ${server}` + (res ? ` • ${res}` : "")
+  }
+  return `CineVilla - Server ${idx + 1}` + (res ? ` • ${res}` : "")
+}
+
 type RawCaption = { id: string; language: string; url: string; format: string }
 type RawSource = { url: string; label: string; captions: RawCaption[] }
 
 function proxySources(sources: RawSource[]) {
-  return sources.map(s => ({
+  return sources.map((s, i) => ({
     ...s,
+    label: brandLabel(s.label, i),
     url: `/api/stream?url=${encodeURIComponent(s.url)}`,
     captions: s.captions?.map(c => ({
       ...c,
       url: `/api/captions?url=${encodeURIComponent(c.url)}`,
     })) ?? [],
   }))
+}
+
+interface MovernerdsSource {
+  url: string
+  name: string
+  type: string
+  quality?: string
+}
+
+interface MovernerdsResponse {
+  success: boolean
+  primarySources?: MovernerdsSource[]
+}
+
+async function fetchMovenerds(
+  tmdbId: string,
+  title: string,
+  year: string,
+  mediaType: string,
+  season: string | null,
+  episode: string | null,
+): Promise<RawSource[] | null> {
+  try {
+    const url = new URL("https://api.movenerds.space/api/stream")
+    url.searchParams.set("tmdbId", tmdbId)
+    url.searchParams.set("type", mediaType)
+    url.searchParams.set("title", title)
+    url.searchParams.set("year", year)
+    url.searchParams.set("language", "en")
+    if (season) url.searchParams.set("season", season)
+    if (episode) url.searchParams.set("episode", episode)
+    console.log("[movenerds] fetching:", url.toString())
+    const res = await fetch(url.toString(), { cache: "no-store" })
+    const data: MovernerdsResponse = await res.json()
+    console.log("[movenerds] success:", data.success, "sources:", data.primarySources?.length)
+    if (!data.success || !data.primarySources?.length) return null
+    return data.primarySources.map((s, i) => {
+      const q = s.quality?.match(/\d{3,4}p/)?.[0] ?? ""
+      return {
+        url: s.url,
+        label: (s.name ?? `Server ${i + 1}`) + (q ? ` ${q}` : ""),
+        captions: [],
+      }
+    })
+  } catch (e) { console.error("[movenerds] error:", e) }
+  return null
 }
 
 const HEADERS = {
@@ -130,16 +195,23 @@ export async function GET(req: NextRequest) {
   const imdbId = sp.get("imdbId") ?? ""
 
   try {
-    // Race both sources — first one with results wins
+    // Try movenerds first, fall back to dulo sources
+    const movenerds = await fetchMovenerds(tmdbId, title, year, mediaType, season, episode)
+    if (movenerds) {
+      console.log("[sources] movenerds won:", movenerds.length)
+      return NextResponse.json({ found: true, sources: proxySources(movenerds) })
+    }
+
+    // Race dulo sources as fallback
     const result = await Promise.any([
       fetchAdditional(tmdbId, title, year, runtime, mediaType, season, episode).then(s => { if (!s) throw new Error("no sources"); return s }),
       fetchBrowser(tmdbId, title, year, runtime, mediaType, season, episode, imdbId)
         .then(s => { if (!s) throw new Error("no sources"); return s }),
     ])
-    console.log("[sources] winner sources count:", result.length, "labels:", result.map(s => s.label))
+    console.log("[sources] dulo winner sources count:", result.length)
     return NextResponse.json({ found: true, sources: proxySources(result) })
   } catch (e) {
-    console.error("[sources] both failed:", e)
+    console.error("[sources] all failed:", e)
     return NextResponse.json({ found: false, pending: true })
   }
 }

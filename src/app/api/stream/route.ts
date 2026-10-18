@@ -11,14 +11,18 @@ export async function GET(req: NextRequest) {
   const abort = new AbortController()
   const timer = setTimeout(() => abort.abort(), 10_000)
 
+  const isMovenerds = url.includes("movenerds.space")
+
   let upstream: Response
   try {
     upstream = await fetch(url, {
       signal: abort.signal,
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Referer": "https://dulo.mov/",
-        "Origin": "https://dulo.mov",
+        ...(isMovenerds ? {} : {
+          "Referer": "https://dulo.mov/",
+          "Origin": "https://dulo.mov",
+        }),
         ...(range ? { "Range": range } : {}),
       },
       redirect: "follow",
@@ -30,7 +34,7 @@ export async function GET(req: NextRequest) {
   }
 
   const contentType = upstream.headers.get("content-type") ?? ""
-  const isHLS = contentType.includes("mpegurl") || contentType.includes("x-mpegurl")
+  const isHLS = contentType.includes("mpegurl") || contentType.includes("x-mpegurl") || url.includes(".m3u8")
 
   const resHeaders = new Headers()
   ;["content-type", "content-length", "content-range", "accept-ranges"].forEach(h => {

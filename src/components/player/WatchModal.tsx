@@ -5,6 +5,7 @@ import { createPortal } from "react-dom"
 import Image from "next/image"
 import VideoPlayer from "@/components/player/VideoPlayer"
 import { X } from "lucide-react"
+import { decrypt } from "@/lib/crypto"
 
 interface WatchModalProps {
   tmdbId: number
@@ -48,6 +49,27 @@ export default function WatchModal({ tmdbId, imdbId, title, year, runtime, poste
   const fetchedUrls = useState(() => new Set<string>())[0]
 
   const fetchSources = async (cancelled: () => boolean) => {
+    // For TV: try movenerds first, fall back to dulo
+    if (mediaType === "tv" && season != null && episode != null) {
+      try {
+        const tvParams = new URLSearchParams({
+          tmdbId: String(tmdbId),
+          title,
+          year,
+          seasonId: String(season),
+          episodeId: String(episode),
+        })
+        const res = await fetch(`/api/tv-sources?${tvParams}`)
+        const data = await res.json()
+        if (!cancelled() && data.found && data.sources?.length) {
+          data.sources.forEach((s: Source) => fetchedUrls.add(s.url))
+          setSources(data.sources)
+          setLoading(false)
+          return
+        }
+      } catch { /* fall through to dulo */ }
+    }
+
     const params = new URLSearchParams({
       tmdbId: String(tmdbId),
       type: mediaType,
@@ -68,7 +90,6 @@ export default function WatchModal({ tmdbId, imdbId, title, year, runtime, poste
           const newSources: Source[] = data.sources.filter((s: Source) => !fetchedUrls.has(s.url))
           newSources.forEach((s: Source) => fetchedUrls.add(s.url))
           if (newSources.length) setSources(prev => [...prev, ...newSources])
-          // keep polling if only a single 480p source came back
           const only480 = data.sources.length === 1 && data.sources[0].label?.toLowerCase().includes("480")
           if (!only480) { setLoading(false); return }
         }
@@ -80,13 +101,19 @@ export default function WatchModal({ tmdbId, imdbId, title, year, runtime, poste
   useEffect(() => {
     let cancelled = false
     fetchSources(() => cancelled)
-    // Fetch subtitles — use imdbId if available, fallback to tmdbId only
-    const subtitleUrl = imdbId
-      ? `/api/subtitles?tmdbId=${tmdbId}&imdbId=${encodeURIComponent(imdbId)}`
-      : `/api/subtitles?tmdbId=${tmdbId}`
-    fetch(subtitleUrl)
+    const subtitleParams = new URLSearchParams({ tmdbId: String(tmdbId) })
+    if (mediaType === "tv" && season != null) subtitleParams.set("season", String(season))
+    if (mediaType === "tv" && episode != null) subtitleParams.set("episode", String(episode))
+    if (imdbId) subtitleParams.set("imdbId", imdbId)
+    fetch(`/api/subtitles?${subtitleParams}`)
       .then(r => r.json())
-      .then(data => { if (!cancelled) { setSubtitles(data); setSubtitlesLoading(false) } })
+      .then(async ({ d }) => {
+        if (!cancelled) {
+          const data = await decrypt<Subtitle[]>(d)
+          setSubtitles(data)
+          setSubtitlesLoading(false)
+        }
+      })
       .catch(() => { if (!cancelled) setSubtitlesLoading(false) })
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
